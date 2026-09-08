@@ -28,7 +28,26 @@ class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, default='')
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    discount = models.PositiveIntegerField(default=0)  # percent, 0-100
+
+    # --- discount (percentage or fixed amount, with optional time window) ---
+    DISCOUNT_TYPE_PERCENTAGE = 'percentage'
+    DISCOUNT_TYPE_FIXED = 'fixed'
+    DISCOUNT_TYPE_CHOICES = [
+        (DISCOUNT_TYPE_PERCENTAGE, 'Percentage'),
+        (DISCOUNT_TYPE_FIXED, 'Fixed Amount'),
+    ]
+    discount_type = models.CharField(
+        max_length=10, choices=DISCOUNT_TYPE_CHOICES, default=DISCOUNT_TYPE_PERCENTAGE
+    )
+    # Replaces the old `discount` (always-percent) field. For
+    # discount_type='percentage' this is 0-100; for 'fixed' it's an EGP
+    # amount subtracted from price.
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Optional window. Leave both blank for an always-on discount (old
+    # behaviour); set either/both to schedule it.
+    discount_start = models.DateTimeField(null=True, blank=True)
+    discount_end = models.DateTimeField(null=True, blank=True)
+
     category = models.CharField(max_length=100, blank=True, default='')
     # --- category migration (Phase 1) -------------------------------
     # Additive, nullable FK living alongside the legacy `category` text
@@ -85,8 +104,23 @@ class Product(models.Model):
         return 'in_stock'
 
     @property
+    def is_discount_active(self):
+        """Whether discount_value currently applies, given the optional window."""
+        if not self.discount_value or self.discount_value <= 0:
+            return False
+        from django.utils import timezone
+        now = timezone.now()
+        if self.discount_start and now < self.discount_start:
+            return False
+        if self.discount_end and now > self.discount_end:
+            return False
+        return True
+
+    @property
     def effective_price(self):
         """Price after discount — mirrors withEffectivePrice() on the frontend."""
-        if self.discount and self.discount > 0:
-            return round(float(self.price) * (1 - self.discount / 100), 2)
-        return float(self.price)
+        if not self.is_discount_active:
+            return float(self.price)
+        if self.discount_type == self.DISCOUNT_TYPE_FIXED:
+            return round(max(float(self.price) - float(self.discount_value), 0), 2)
+        return round(float(self.price) * (1 - float(self.discount_value) / 100), 2)

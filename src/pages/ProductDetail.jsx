@@ -4,6 +4,7 @@ import PageTransition from '../components/PageTransition';
 import { useProduct, useRelatedProducts } from '../hooks/useProducts';
 import { useCart } from '../context/CartContext';
 import { getLargeUrl, getThumbUrl } from '../lib/images';
+import { DiscountPill, PriceWithDiscount, DiscountCountdown } from '../components/DiscountBadge';
 
 const formatPrice = (n, c) => `${n.toLocaleString()} ${c}`;
 
@@ -108,13 +109,17 @@ export default function ProductDetail() {
 
           {/* Info */}
           <div className="max-w-md">
-            <p className="eyebrow text-electric">{product.tag}</p>
+            <div className="flex items-center gap-3">
+              <p className="eyebrow text-electric">{product.tag}</p>
+              <DiscountPill product={product} />
+            </div>
             <h1 className="font-display mt-3 text-4xl font-medium md:text-5xl">
               {product.name}
             </h1>
-            <p className="font-mono mt-4 text-xl">
-              {formatPrice(product.price, product.currency)}
-            </p>
+            <div className="mt-4">
+              <PriceWithDiscount product={product} formatPrice={formatPrice} />
+              <DiscountCountdown endIso={product.discount_end} />
+            </div>
             <p className="mt-6 text-ink-soft leading-relaxed">{product.description}</p>
 
             {/* Color */}

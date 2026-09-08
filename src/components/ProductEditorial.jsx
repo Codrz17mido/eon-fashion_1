@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { getLargeUrl } from '../lib/images';
+import { DiscountPill, PriceWithDiscount, DiscountCountdown } from './DiscountBadge';
 
 // Full-bleed editorial layout: image on one side, copy on the other,
 // alternating per index — reads like a fashion magazine spread rather
@@ -33,6 +34,9 @@ export default function ProductEditorial({ product, index, formatPrice }) {
           <span className="eyebrow absolute left-5 top-5 bg-bg/85 px-3 py-1.5 text-ink backdrop-blur-sm">
             {product.tag}
           </span>
+          <span className="absolute right-5 top-5">
+            <DiscountPill product={product} />
+          </span>
         </Link>
       </div>
 
@@ -49,9 +53,10 @@ export default function ProductEditorial({ product, index, formatPrice }) {
         <h3 className="font-display mt-4 text-4xl font-medium leading-[1.05] text-ink md:text-5xl">
           {product.name}
         </h3>
-        <p className="font-mono mt-4 text-lg text-ink-soft">
-          {formatPrice(product.price, product.currency)}
-        </p>
+        <div className="mt-4">
+          <PriceWithDiscount product={product} formatPrice={formatPrice} />
+          <DiscountCountdown endIso={product.discount_end} />
+        </div>
         <p className="mt-6 text-base leading-relaxed text-ink-soft">
           {product.description}
         </p>

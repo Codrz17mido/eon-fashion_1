@@ -11,12 +11,26 @@ const STANDARD_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 // need to track per-file upload progress in a plain object.
 const fileKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
 
+// ISO string from the API -> value a <input type="datetime-local"> accepts.
+const toLocalInputValue = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// <input type="datetime-local"> value -> ISO string (or null) for the API.
+const fromLocalInputValue = (value) => (value ? new Date(value).toISOString() : null);
+
 const emptyForm = {
   name: '',
   tag: '',
   category: '',
   price: '',
-  discount: '',
+  discountType: 'percentage',
+  discountValue: '',
+  discountStart: '',
+  discountEnd: '',
   stock: '',
   colors: '',
   sizes: [],
@@ -47,7 +61,10 @@ export default function ProductForm({ product, onClose }) {
         tag: product.tag || '',
         category: product.category || '',
         price: product.originalPrice ?? product.price ?? '',
-        discount: product.discount || '',
+        discountType: product.discount_type || 'percentage',
+        discountValue: product.discount_value || '',
+        discountStart: toLocalInputValue(product.discount_start),
+        discountEnd: toLocalInputValue(product.discount_end),
         stock: product.stock ?? '',
         colors: (product.colors || []).join(', '),
         sizes: product.sizes || [],
@@ -93,7 +110,10 @@ export default function ProductForm({ product, onClose }) {
     tag: form.tag.trim(),
     category: form.category,
     price: Number(form.price) || 0,
-    discount: Number(form.discount) || 0,
+    discount_type: form.discountType,
+    discount_value: Number(form.discountValue) || 0,
+    discount_start: fromLocalInputValue(form.discountStart),
+    discount_end: fromLocalInputValue(form.discountEnd),
     stock: Number(form.stock) || 0,
     colors: form.colors
       .split(',')
@@ -225,20 +245,12 @@ export default function ProductForm({ product, onClose }) {
             </select>
           </Field>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Price (EGP)">
               <input
                 type="number"
                 value={form.price}
                 onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                className="input"
-              />
-            </Field>
-            <Field label="Discount %">
-              <input
-                type="number"
-                value={form.discount}
-                onChange={(e) => setForm((f) => ({ ...f, discount: e.target.value }))}
                 className="input"
               />
             </Field>
@@ -251,6 +263,49 @@ export default function ProductForm({ product, onClose }) {
               />
             </Field>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Discount type">
+              <select
+                value={form.discountType}
+                onChange={(e) => setForm((f) => ({ ...f, discountType: e.target.value }))}
+                className="input"
+              >
+                <option value="percentage">Percentage (%)</option>
+                <option value="fixed">Fixed amount (EGP)</option>
+              </select>
+            </Field>
+            <Field label={form.discountType === 'fixed' ? 'Discount (EGP)' : 'Discount (%)'}>
+              <input
+                type="number"
+                value={form.discountValue}
+                onChange={(e) => setForm((f) => ({ ...f, discountValue: e.target.value }))}
+                className="input"
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Discount starts (optional)">
+              <input
+                type="datetime-local"
+                value={form.discountStart}
+                onChange={(e) => setForm((f) => ({ ...f, discountStart: e.target.value }))}
+                className="input"
+              />
+            </Field>
+            <Field label="Discount ends (optional)">
+              <input
+                type="datetime-local"
+                value={form.discountEnd}
+                onChange={(e) => setForm((f) => ({ ...f, discountEnd: e.target.value }))}
+                className="input"
+              />
+            </Field>
+          </div>
+          <p className="eyebrow text-gray-mid">
+            Leave both dates blank for an always-on discount while the value above is greater than 0.
+          </p>
 
           <Field label="Colors (comma-separated)">
             <input

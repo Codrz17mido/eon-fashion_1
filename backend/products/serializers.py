@@ -12,6 +12,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     effectivePrice = serializers.ReadOnlyField(source='effective_price')
+    isDiscountActive = serializers.ReadOnlyField(source='is_discount_active')
     # Additive, read-only for now (Phase 1) — the existing `category`
     # string field below is untouched so current frontend consumers keep
     # working unchanged. This just exposes the new FK's id alongside it;
@@ -25,8 +26,12 @@ class ProductSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'price',
-            'discount',
+            'discount_type',
+            'discount_value',
+            'discount_start',
+            'discount_end',
             'effectivePrice',
+            'isDiscountActive',
             'category',
             'category_relation_id',
             'sizes',

@@ -36,7 +36,7 @@ export function CartProvider({ children }) {
           lineId,
           id: product.id,
           name: product.name,
-          price: product.price,
+          price: product.effectivePrice ?? product.price,
           image: getThumbUrl(product.images[0]),
           size,
           color,
@@ -50,7 +50,7 @@ export function CartProvider({ children }) {
       window.fbq('track', 'AddToCart', {
         content_ids: [product.id],
         content_name: product.name,
-        value: product.price * quantity,
+        value: (product.effectivePrice ?? product.price) * quantity,
         currency: 'EGP',
       });
     }
