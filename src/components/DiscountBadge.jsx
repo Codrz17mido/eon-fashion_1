@@ -41,16 +41,16 @@ export function DiscountPill({ product }) {
 }
 
 export function PriceWithDiscount({ product, formatPrice }) {
-  if (!product.isDiscountActive) {
+  if (!product.isDiscountActive || product.originalPrice === undefined) {
     return <span className="font-mono text-lg text-ink-soft">{formatPrice(product.price, product.currency)}</span>;
   }
   return (
     <span className="font-mono flex items-baseline gap-2 text-lg">
       <span className="text-ink-soft line-through opacity-60">
-        {formatPrice(product.price, product.currency)}
+        {formatPrice(product.originalPrice, product.currency)}
       </span>
       <span className="text-electric">
-        {formatPrice(product.effectivePrice, product.currency)}
+        {formatPrice(product.price, product.currency)}
       </span>
     </span>
   );

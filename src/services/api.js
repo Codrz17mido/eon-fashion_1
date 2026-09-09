@@ -231,17 +231,24 @@ export async function restoreSession() {
 // page/component work unchanged regardless of which backend is active.
 export function normalizeApiProduct(raw) {
   const price = Number(raw.price) || 0;
-  const discount = Number(raw.discount) || 0;
-  const effective = discount > 0 ? Math.round(price * (1 - discount / 100)) : price;
+  const isDiscountActive = Boolean(raw.isDiscountActive);
+  const effective = isDiscountActive
+    ? Number(raw.effectivePrice) || price
+    : price;
   return {
     id: String(raw.id),
     name: raw.name || '',
     tag: raw.tag || '',
     category: raw.category || '',
     price: effective,
-    originalPrice: discount > 0 ? price : undefined,
+    originalPrice: isDiscountActive ? price : undefined,
     currency: raw.currency || 'EGP',
-    discount,
+    discount_type: raw.discount_type || 'percentage',
+    discount_value: Number(raw.discount_value) || 0,
+    discount_start: raw.discount_start ?? null,
+    discount_end: raw.discount_end ?? null,
+    isDiscountActive,
+    effectivePrice: effective,
     description: raw.description || '',
     details: Array.isArray(raw.details) ? raw.details : [],
     colors: Array.isArray(raw.colors) ? raw.colors : [],
