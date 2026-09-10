@@ -80,6 +80,15 @@ export default function Cart() {
         currency: 'EGP',
         shippingCost,
       });
+      // OrderSuccess needs each line item's id/price/quantity to build
+      // Meta's `contents`/`content_ids`/`num_items` — router state doesn't
+      // survive a refresh or a direct link open (see OrderSuccess.jsx), so
+      // this rides in sessionStorage instead, keyed by order id, and
+      // clearCart() below would otherwise erase it.
+      sessionStorage.setItem(
+        `eon_order_items_${displayId}`,
+        JSON.stringify(items.map((i) => ({ id: i.id, price: i.price, quantity: i.quantity })))
+      );
       clearCart();
       navigate(`/order-success/${displayId}?total=${total}`);
     } catch (err) {

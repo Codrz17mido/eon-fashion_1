@@ -19,16 +19,50 @@ export default function OrderSuccess() {
   // missing, and reports it against the neighboring currency param).
   // Guarded by orderId in sessionStorage so a refresh (or revisiting
   // this URL later) never double-counts the same order as two purchases.
+  //
+  // Meta's Events Manager flagged low parameter coverage on this event —
+  // it wants content_ids/contents/content_type/num_items describing what
+  // was actually bought, not just the total. Cart.jsx stashes each line
+  // item (id/price/quantity) in sessionStorage right before clearing the
+  // cart, specifically so this handler can still read it here.
   useEffect(() => {
     if (!orderId || !total || typeof window === 'undefined' || typeof window.fbq !== 'function') return;
     const key = `eon_purchase_tracked_${orderId}`;
     if (sessionStorage.getItem(key)) return;
-    window.fbq('track', 'Purchase', {
+
+    const itemsKey = `eon_order_items_${orderId}`;
+    let lineItems = [];
+    try {
+      lineItems = JSON.parse(sessionStorage.getItem(itemsKey) || '[]');
+    } catch {
+      lineItems = [];
+    }
+
+    const purchaseParams = {
       value: total,
       currency: 'EGP',
-      content_ids: [orderId],
-    });
+      order_id: orderId,
+    };
+
+    if (lineItems.length > 0) {
+      purchaseParams.content_ids = lineItems.map((i) => String(i.id));
+      purchaseParams.contents = lineItems.map((i) => ({
+        id: String(i.id),
+        quantity: i.quantity,
+        item_price: i.price,
+      }));
+      purchaseParams.content_type = 'product';
+      purchaseParams.num_items = lineItems.reduce((sum, i) => sum + i.quantity, 0);
+    } else {
+      // Fallback so the event still fires with *something* identifying
+      // the order if the sessionStorage entry is missing (e.g. an old
+      // tab still open from before this change shipped).
+      purchaseParams.content_ids = [orderId];
+    }
+
+    window.fbq('track', 'Purchase', purchaseParams);
     sessionStorage.setItem(key, '1');
+    sessionStorage.removeItem(itemsKey);
   }, [orderId, total]);
 
   return (
