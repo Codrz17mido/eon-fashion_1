@@ -38,6 +38,11 @@ class Order(models.Model):
     display_id = models.CharField(max_length=20, unique=True, default=generate_display_id)
     customer_name = models.CharField(max_length=200)
     phone = models.CharField(max_length=30, db_index=True)
+    # Second contact number, required at checkout: the first order taken
+    # after launch came in with a phone number one digit short, leaving
+    # no way to reach the customer at all. A backup number makes that
+    # recoverable. Existing rows (pre-migration) keep an empty string.
+    phone_alt = models.CharField(max_length=30, blank=True, default='')
     address = models.TextField()
     notes = models.TextField(blank=True, default='')
 

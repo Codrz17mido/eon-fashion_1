@@ -60,6 +60,7 @@ def notify_new_order(order):
         f'🛍️ New order {order.display_id}',
         f'Customer: {order.customer_name}',
         f'Phone: {order.phone}',
+        f'Backup phone: {order.phone_alt}' if order.phone_alt else 'Backup phone: —',
         f'Address: {order.address}',
         '',
     ]

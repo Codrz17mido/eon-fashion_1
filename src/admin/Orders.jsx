@@ -269,6 +269,9 @@ export default function AdminOrders() {
                             </p>
                             <p className="mt-1">{order.customer?.name}</p>
                             <p className="text-black/60">{order.customer?.phone}</p>
+                            {order.customer?.phoneAlt && (
+                              <p className="text-black/60">{order.customer.phoneAlt} (backup)</p>
+                            )}
                             <p className="text-black/60">{order.customer?.address}</p>
                             {order.customer?.notes && (
                               <p className="mt-1 text-black/50">Notes: {order.customer.notes}</p>

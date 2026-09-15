@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 
 from django.db import transaction
@@ -32,7 +33,7 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'id', 'display_id', 'customer_name', 'phone', 'address', 'notes',
+            'id', 'display_id', 'customer_name', 'phone', 'phone_alt', 'address', 'notes',
             'currency', 'subtotal', 'shipping_cost', 'total', 'payment_method',
             'status', 'available_transitions', 'read', 'items', 'created_at', 'updated_at',
         ]
@@ -102,11 +103,15 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     """
 
     items = OrderItemInputSerializer(many=True)
+    # Required at checkout — see Order.phone_alt for why. The model field
+    # itself allows blank so historical rows stay valid; this serializer
+    # is where "required from now on" is enforced.
+    phone_alt = serializers.CharField(required=True, allow_blank=False)
 
     class Meta:
         model = Order
         fields = [
-            'customer_name', 'phone', 'address', 'notes',
+            'customer_name', 'phone', 'phone_alt', 'address', 'notes',
             'currency', 'shipping_cost', 'payment_method', 'items',
         ]
 
@@ -114,6 +119,19 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if not items:
             raise serializers.ValidationError('Your bag is empty.')
         return items
+
+    def validate_phone(self, value):
+        return _validate_egyptian_phone(value)
+
+    def validate_phone_alt(self, value):
+        return _validate_egyptian_phone(value)
+
+    def validate(self, attrs):
+        if attrs.get('phone') and attrs.get('phone') == attrs.get('phone_alt'):
+            raise serializers.ValidationError({
+                'phone_alt': 'The backup number must be different from the main number.'
+            })
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
@@ -176,6 +194,28 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         # Respond with the full read shape (including display_id, items,
         # computed totals) rather than the create-only input shape.
         return OrderSerializer(instance, context=self.context).data
+
+
+def _validate_egyptian_phone(value):
+    """Egyptian mobile numbers: 11 digits starting 010/011/012/015.
+    Spaces, dashes and a +20 / 0020 country prefix are stripped rather
+    than rejected — customers type numbers all sorts of ways, and the
+    point is to catch genuinely unreachable numbers (the digit-short
+    one that prompted this), not to fail someone over formatting."""
+    digits = re.sub(r'[\s\-()]', '', value or '')
+    if digits.startswith('+20'):
+        digits = '0' + digits[3:]
+    elif digits.startswith('0020'):
+        digits = '0' + digits[4:]
+    elif digits.startswith('20') and len(digits) == 12:
+        digits = '0' + digits[2:]
+
+    if not re.fullmatch(r'01[0125]\d{8}', digits):
+        raise serializers.ValidationError(
+            'Enter a valid Egyptian mobile number — 11 digits starting with '
+            '010, 011, 012 or 015.'
+        )
+    return digits
 
 
 def _first_thumb(images):

@@ -40,6 +40,7 @@ function normalizeApiOrder(raw) {
     customer: {
       name: raw.customer_name || '',
       phone: raw.phone || '',
+      phoneAlt: raw.phone_alt || '',
       address: raw.address || '',
       notes: raw.notes || '',
     },
@@ -77,6 +78,7 @@ export async function createOrder({ customer, items, subtotal, currency, shippin
   const raw = await apiCreateOrder({
     customer_name: customer.name,
     phone: customer.phone,
+    phone_alt: customer.phoneAlt || '',
     address: customer.address,
     notes: customer.notes || '',
     currency: currency || 'EGP',

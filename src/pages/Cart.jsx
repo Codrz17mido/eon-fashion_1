@@ -24,10 +24,24 @@ const GOVERNORATES = [
 const shippingFeeFor = (governorate) =>
   governorate === 'Cairo' || governorate === 'Giza' ? CAIRO_GIZA_FEE : OTHER_FEE;
 
+// Strips spaces/dashes and a +20 / 0020 / 20 country prefix, so the two
+// numbers can be compared and validated regardless of how they were
+// typed. Kept in sync with _validate_egyptian_phone in
+// backend/orders/serializers.py.
+const normalizePhone = (value) => {
+  let digits = String(value || '').replace(/[\s\-()]/g, '');
+  if (digits.startsWith('+20')) digits = '0' + digits.slice(3);
+  else if (digits.startsWith('0020')) digits = '0' + digits.slice(4);
+  else if (digits.startsWith('20') && digits.length === 12) digits = '0' + digits.slice(2);
+  return digits;
+};
+
+const isValidEgyptianPhone = (value) => /^01[0125]\d{8}$/.test(normalizePhone(value));
+
 export default function Cart() {
   const { items, updateQuantity, removeItem, subtotal, clearCart } = useCart();
   const [customer, setCustomer] = useState({
-    name: '', phone: '', address: '', governorate: 'Cairo', notes: '',
+    name: '', phone: '', phoneAlt: '', address: '', governorate: 'Cairo', notes: '',
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -66,8 +80,23 @@ export default function Cart() {
       setError('Your bag is empty.');
       return;
     }
-    if (!customer.name || !customer.phone || !customer.address) {
-      setError('Fill in your name, phone, and address to continue.');
+    if (!customer.name || !customer.phone || !customer.phoneAlt || !customer.address) {
+      setError('Fill in your name, both phone numbers, and address to continue.');
+      return;
+    }
+    // Mirrors the backend's _validate_egyptian_phone so a bad number is
+    // caught before a round trip. The backend check is the real one —
+    // this is just for a faster, clearer message.
+    if (!isValidEgyptianPhone(customer.phone)) {
+      setError('Enter a valid Egyptian mobile number — 11 digits starting with 010, 011, 012 or 015.');
+      return;
+    }
+    if (!isValidEgyptianPhone(customer.phoneAlt)) {
+      setError('Enter a valid backup mobile number — 11 digits starting with 010, 011, 012 or 015.');
+      return;
+    }
+    if (normalizePhone(customer.phone) === normalizePhone(customer.phoneAlt)) {
+      setError('The backup number must be different from the main number.');
       return;
     }
     setError('');
@@ -212,6 +241,7 @@ export default function Cart() {
               <div className="mt-8 space-y-5">
                 <Field label="Full name" name="name" value={customer.name} onChange={handleChange} />
                 <Field label="Phone number" name="phone" value={customer.phone} onChange={handleChange} type="tel" />
+                <Field label="Backup phone number" name="phoneAlt" value={customer.phoneAlt} onChange={handleChange} type="tel" />
                 <div>
                   <label className="eyebrow text-gray-mid" htmlFor="governorate">
                     Governorate
