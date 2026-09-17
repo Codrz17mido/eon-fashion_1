@@ -6,13 +6,31 @@ import { createOrder } from '../lib/db/orders';
 
 const fmt = (n) => `${n.toLocaleString()} EGP`;
 
-// Cairo/Giza get the discounted in-city rate; every other governorate
-// pays the standard out-of-town rate. Keep this list exhaustive (all 27
-// governorates) so "Other" never silently applies to somewhere that
-// should count as Cairo/Giza — and so the dropdown always resolves to
-// a real fee, never an unset one.
-const CAIRO_GIZA_FEE = 50;
-const OTHER_FEE = 70;
+// Six tiers by governorate, replacing the old flat Cairo/Giza-vs-rest
+// split. Keep this exhaustive (all 27 governorates) so every dropdown
+// value resolves to a real fee — a governorate missing from every tier
+// would silently fall through to undefined shipping cost.
+const SHIPPING_TIERS = [
+  { fee: 65, governorates: ['Giza', 'Cairo', 'Qalyubia'] },
+  {
+    fee: 75,
+    governorates: [
+      'Alexandria', 'Beheira', 'Gharbia', 'Monufia', 'Damietta',
+      'Dakahlia', 'Kafr El Sheikh', 'Sharqia',
+    ],
+  },
+  { fee: 80, governorates: ['Ismailia', 'Suez', 'Port Said'] },
+  { fee: 85, governorates: ['Beni Suef', 'Minya', 'Asyut'] },
+  { fee: 115, governorates: ['Sohag', 'Qena', 'Aswan', 'Luxor', 'Red Sea'] },
+  { fee: 125, governorates: ['Matrouh', 'New Valley', 'North Sinai', 'South Sinai'] },
+];
+// Faiyum isn't in any tier list sent — grouped with its nearest priced
+// neighbours (Beni Suef/Minya/Asyut) rather than left to silently fall
+// through. Flag this to confirm if it should sit in a different tier.
+const GOVERNORATE_FEE = Object.fromEntries(
+  SHIPPING_TIERS.flatMap((tier) => tier.governorates.map((g) => [g, tier.fee]))
+);
+GOVERNORATE_FEE.Faiyum = 85;
 const GOVERNORATES = [
   'Cairo', 'Giza',
   'Alexandria', 'Aswan', 'Asyut', 'Beheira', 'Beni Suef', 'Dakahlia',
@@ -21,8 +39,7 @@ const GOVERNORATES = [
   'Port Said', 'Qalyubia', 'Qena', 'Red Sea', 'Sharqia', 'Sohag',
   'South Sinai', 'Suez',
 ];
-const shippingFeeFor = (governorate) =>
-  governorate === 'Cairo' || governorate === 'Giza' ? CAIRO_GIZA_FEE : OTHER_FEE;
+const shippingFeeFor = (governorate) => GOVERNORATE_FEE[governorate] ?? 125;
 
 // Strips spaces/dashes and a +20 / 0020 / 20 country prefix, so the two
 // numbers can be compared and validated regardless of how they were
