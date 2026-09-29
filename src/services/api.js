@@ -316,6 +316,21 @@ export function deleteCategory(id) {
   return request(`/products/categories/${id}/`, { method: 'DELETE', auth: true });
 }
 
+// --- Promo codes -----------------------------------------------------------
+// Public lookup only — used by the cart page to preview a discount before
+// checkout. The server re-validates and re-applies the code from scratch
+// when the order is actually created (backend/orders/serializers.py), so
+// this response is a preview, not the source of truth for pricing.
+export async function checkPromoCode(code) {
+  try {
+    return await request(`/products/promo-codes/check/?code=${encodeURIComponent(code)}`);
+  } catch (err) {
+    // request() throws on non-2xx; surface the same {valid:false} shape
+    // the 404 body would have had so callers don't need two code paths.
+    return { valid: false, error: err?.message || 'Invalid or inactive code.' };
+  }
+}
+
 // --- Orders ---------------------------------------------------------------
 
 export function createOrder(order) {

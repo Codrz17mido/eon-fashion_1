@@ -74,7 +74,7 @@ function unwrapList(raw) {
 // Called from checkout. Any signed-out visitor is allowed to create an
 // order (see OrderPermission on the Django side) but can never read,
 // list, or edit orders afterward — only the admin dashboard can.
-export async function createOrder({ customer, items, subtotal, currency, shippingCost = 0 }) {
+export async function createOrder({ customer, items, subtotal, currency, shippingCost = 0, promoCode = '' }) {
   const raw = await apiCreateOrder({
     customer_name: customer.name,
     phone: customer.phone,
@@ -83,6 +83,11 @@ export async function createOrder({ customer, items, subtotal, currency, shippin
     notes: customer.notes || '',
     currency: currency || 'EGP',
     shipping_cost: shippingCost,
+    // The server re-validates this and re-applies the discount from its
+    // own PromoCode/Product records — see OrderCreateSerializer.validate_promo_code
+    // — so an empty/garbage value here just means "no discount applied",
+    // never a security concern.
+    promo_code: promoCode || '',
     items: items.map((item) => ({
       product: item.id,
       quantity: item.quantity,

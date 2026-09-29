@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import PageTransition from '../components/PageTransition';
 import { useCart } from '../context/CartContext';
 import { createOrder } from '../lib/db/orders';
+import { checkPromoCode } from '../services/api';
 
 const fmt = (n) => `${n.toLocaleString()} EGP`;
 
@@ -65,8 +66,59 @@ export default function Cart() {
   const navigate = useNavigate();
   const checkoutTracked = useRef(false);
 
+  // Promo code: `promo` is the resolved server response ({valid, code,
+  // discount_type, discount_value, product_ids}) once Apply succeeds,
+  // or null before/after a failed attempt. This is a preview only —
+  // the server re-validates and re-applies it independently when the
+  // order is actually created (see lib/db/orders.js / backend
+  // OrderCreateSerializer), so nothing here needs to be trusted.
+  const [promoInput, setPromoInput] = useState('');
+  const [promo, setPromo] = useState(null);
+  const [promoError, setPromoError] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+
   const shippingCost = shippingFeeFor(customer.governorate);
-  const total = subtotal + shippingCost;
+
+  const promoProductIds = promo?.valid ? new Set(promo.product_ids.map(String)) : null;
+  const discountedSubtotal = items.reduce((sum, item) => {
+    if (!promoProductIds || !promoProductIds.has(String(item.id))) {
+      return sum + item.price * item.quantity;
+    }
+    const price =
+      promo.discount_type === 'fixed'
+        ? Math.max(item.price - Number(promo.discount_value), 0)
+        : item.price * (1 - Number(promo.discount_value) / 100);
+    return sum + price * item.quantity;
+  }, 0);
+  const promoSavings = subtotal - discountedSubtotal;
+  const total = discountedSubtotal + shippingCost;
+
+  const handleApplyPromo = async () => {
+    const code = promoInput.trim();
+    if (!code) return;
+    setPromoLoading(true);
+    setPromoError('');
+    try {
+      const result = await checkPromoCode(code);
+      if (result?.valid) {
+        setPromo(result);
+      } else {
+        setPromo(null);
+        setPromoError(result?.error || 'Invalid or inactive code.');
+      }
+    } catch {
+      setPromo(null);
+      setPromoError('Could not check that code right now — please try again.');
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setPromo(null);
+    setPromoInput('');
+    setPromoError('');
+  };
 
   // Fires Meta's "InitiateCheckout" once per visit to this page while
   // the bag has items — signals "customer started checking out",
@@ -122,9 +174,10 @@ export default function Cart() {
       const { displayId } = await createOrder({
         customer,
         items,
-        subtotal,
+        subtotal: discountedSubtotal,
         currency: 'EGP',
         shippingCost,
+        promoCode: promo?.valid ? promo.code : '',
       });
       // OrderSuccess needs each line item's id/price/quantity to build
       // Meta's `contents`/`content_ids`/`num_items` — router state doesn't
@@ -237,11 +290,50 @@ export default function Cart() {
           {/* Checkout form */}
           <div>
             <div className="border border-line p-8">
+              {/* Promo code */}
+              <div className="mb-4">
+                {promo?.valid ? (
+                  <div className="flex items-center justify-between border border-electric/40 bg-electric/5 px-3 py-2">
+                    <span className="eyebrow text-electric">
+                      Code {promo.code} applied
+                    </span>
+                    <button type="button" onClick={handleRemovePromo} className="eyebrow text-ink-soft underline">
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value)}
+                      placeholder="Promo code"
+                      className="input flex-1 uppercase"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyPromo}
+                      disabled={promoLoading || !promoInput.trim()}
+                      className="eyebrow border border-line px-4 disabled:opacity-50"
+                    >
+                      {promoLoading ? '...' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+                {promoError && <p className="mt-1 text-xs text-red-500">{promoError}</p>}
+              </div>
+
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-ink-soft">Subtotal</span>
                   <span className="font-mono">{fmt(subtotal)}</span>
                 </div>
+                {promoSavings > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-electric">Discount ({promo.code})</span>
+                    <span className="font-mono text-electric">-{fmt(promoSavings)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-ink-soft">Shipping</span>
                   <span className="font-mono">{fmt(shippingCost)}</span>
