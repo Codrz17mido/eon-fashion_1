@@ -3,6 +3,12 @@ import { createProduct, updateProduct } from '../lib/db/products';
 import { uploadProductImageSets, deleteProductImageSet, validateImageFile } from '../lib/djangoStorage';
 import { getThumbUrl } from '../lib/images';
 import { subscribeCategories } from '../lib/db/categories';
+import {
+  findPromoCodeByCode,
+  findPromoCodeForProduct,
+  createPromoCode,
+  updatePromoCode,
+} from '../services/api';
 
 const STANDARD_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
@@ -51,8 +57,33 @@ export default function ProductForm({ product, onClose }) {
   const [progressMap, setProgressMap] = useState({}); // fileKey -> 0..1
   const [error, setError] = useState('');
   const [savedId, setSavedId] = useState(product?.id || null);
+  // Promo code, scoped to this one product — separate from
+  // discountType/discountValue above (that's the automatic, no-code
+  // discount). promoId tracks an existing PromoCode this product is
+  // already on (set from findPromoCodeForProduct below), so saving
+  // updates that record instead of creating a duplicate.
+  const [promoCode, setPromoCode] = useState('');
+  const [promoDiscountType, setPromoDiscountType] = useState('percentage');
+  const [promoDiscountValue, setPromoDiscountValue] = useState('');
+  const [promoId, setPromoId] = useState(null);
 
   useEffect(() => subscribeCategories(setCategories), []);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    findPromoCodeForProduct(product.id)
+      .then((promo) => {
+        if (!promo) return;
+        setPromoId(promo.id);
+        setPromoCode(promo.code);
+        setPromoDiscountType(promo.discount_type);
+        setPromoDiscountValue(promo.discount_value);
+      })
+      .catch(() => {
+        // Non-fatal — the product form still works without promo info;
+        // the admin can just re-enter/re-check the code manually.
+      });
+  }, [product?.id]);
 
   useEffect(() => {
     if (product) {
@@ -152,6 +183,44 @@ export default function ProductForm({ product, onClose }) {
       setError(err?.message || 'Failed to save product details.');
       setSaving(false);
       return;
+    }
+
+    // Promo code (optional) — separate save, after the product record
+    // definitely has an id. A blank code means "no promo code for this
+    // product" and is skipped entirely, so leaving it empty never
+    // touches any existing code.
+    const trimmedCode = promoCode.trim();
+    if (trimmedCode) {
+      try {
+        const codeData = {
+          code: trimmedCode,
+          discount_type: promoDiscountType,
+          discount_value: Number(promoDiscountValue) || 0,
+        };
+        if (promoId) {
+          // Already known to be on this code (from findPromoCodeForProduct)
+          // — just update its discount, no need to touch `products`.
+          await updatePromoCode(promoId, codeData);
+        } else {
+          const existing = await findPromoCodeByCode(trimmedCode);
+          if (existing) {
+            // Code already exists for other product(s) — add this one
+            // rather than erroring on the unique `code` constraint.
+            const productIds = existing.products.includes(Number(id))
+              ? existing.products
+              : [...existing.products, Number(id)];
+            await updatePromoCode(existing.id, { ...codeData, products: productIds });
+            setPromoId(existing.id);
+          } else {
+            const created = await createPromoCode({ ...codeData, products: [Number(id)] });
+            setPromoId(created.id);
+          }
+        }
+      } catch (err) {
+        // Non-fatal — the product itself is already saved at this point;
+        // surface the promo-specific problem without discarding that.
+        setError(err?.message || 'Product saved, but the promo code could not be saved.');
+      }
     }
 
     // Now optimize (resize + WebP encode) and upload any newly-picked
@@ -306,6 +375,46 @@ export default function ProductForm({ product, onClose }) {
           <p className="eyebrow text-gray-mid">
             Leave both dates blank for an always-on discount while the value above is greater than 0.
           </p>
+
+          {/* Promo code — separate from the automatic discount above.
+              Customers type this in at checkout; it isn't applied until
+              they do. Leave the code blank for no promo code. */}
+          <div className="border-t border-line pt-4">
+            <p className="eyebrow mb-3 text-ink-soft">Promo code (optional)</p>
+            <Field label="Code">
+              <input
+                type="text"
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                placeholder="e.g. WELCOME20"
+                className="input uppercase"
+              />
+            </Field>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Field label="Discount type">
+                <select
+                  value={promoDiscountType}
+                  onChange={(e) => setPromoDiscountType(e.target.value)}
+                  className="input"
+                >
+                  <option value="percentage">Percentage (%)</option>
+                  <option value="fixed">Fixed Amount</option>
+                </select>
+              </Field>
+              <Field label={promoDiscountType === 'fixed' ? 'Discount (EGP)' : 'Discount (%)'}>
+                <input
+                  type="number"
+                  value={promoDiscountValue}
+                  onChange={(e) => setPromoDiscountValue(e.target.value)}
+                  className="input"
+                />
+              </Field>
+            </div>
+            <p className="eyebrow mt-2 text-gray-mid">
+              If this code already exists on another product, this product is added to it —
+              it won't create a duplicate.
+            </p>
+          </div>
 
           <Field label="Colors (comma-separated)">
             <input

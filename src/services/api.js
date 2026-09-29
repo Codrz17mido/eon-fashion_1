@@ -331,6 +331,31 @@ export async function checkPromoCode(code) {
   }
 }
 
+// Admin-only — used by admin/ProductForm.jsx so a promo code can be set
+// up right from the Add/Edit Product screen instead of a separate admin
+// page. findPromoCodeByCode returns null (not a throw) on a 404 so the
+// form can tell "doesn't exist yet, create it" apart from a real error.
+export async function findPromoCodeByCode(code) {
+  try {
+    return await request(`/products/promo-codes/find/?code=${encodeURIComponent(code)}`, { auth: true });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function findPromoCodeForProduct(productId) {
+  return request(`/products/promo-codes/for-product/?product_id=${encodeURIComponent(productId)}`, { auth: true });
+}
+
+export function createPromoCode(data) {
+  return request('/products/promo-codes/', { method: 'POST', body: data, auth: true });
+}
+
+export function updatePromoCode(id, data) {
+  return request(`/products/promo-codes/${id}/`, { method: 'PATCH', body: data, auth: true });
+}
+
 // --- Orders ---------------------------------------------------------------
 
 export function createOrder(order) {
