@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.db import transaction
 from rest_framework import serializers
 
-from products.models import Product
+from products.models import Product, PromoCode
 
 from .models import Order, OrderItem
 from .notifications import notify_new_order
@@ -34,7 +34,7 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'display_id', 'customer_name', 'phone', 'phone_alt', 'address', 'notes',
-            'currency', 'subtotal', 'shipping_cost', 'total', 'payment_method',
+            'currency', 'subtotal', 'shipping_cost', 'total', 'payment_method', 'promo_code',
             'status', 'available_transitions', 'read', 'items', 'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -107,12 +107,13 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     # itself allows blank so historical rows stay valid; this serializer
     # is where "required from now on" is enforced.
     phone_alt = serializers.CharField(required=True, allow_blank=False)
+    promo_code = serializers.CharField(required=False, allow_blank=True, default='')
 
     class Meta:
         model = Order
         fields = [
             'customer_name', 'phone', 'phone_alt', 'address', 'notes',
-            'currency', 'shipping_cost', 'payment_method', 'items',
+            'currency', 'shipping_cost', 'payment_method', 'items', 'promo_code',
         ]
 
     def validate_items(self, items):
@@ -133,10 +134,27 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             })
         return attrs
 
+    def validate_promo_code(self, value):
+        """Resolves the code to an active PromoCode and stashes it on
+        self._promo for create() to use — price is never trusted from
+        the client (see the class docstring), so the discount has to be
+        re-applied here from the server's own PromoCode/Product records,
+        the same way effective_price already is."""
+        code = value.strip().upper()
+        self._promo = None
+        if not code:
+            return ''
+        try:
+            self._promo = PromoCode.objects.get(code=code, active=True)
+        except PromoCode.DoesNotExist:
+            raise serializers.ValidationError('Invalid or inactive promo code.')
+        return code
+
     @transaction.atomic
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         shipping_cost = validated_data.pop('shipping_cost', Decimal('0'))
+        promo = getattr(self, '_promo', None)
 
         order = Order.objects.create(**validated_data, shipping_cost=shipping_cost)
 
@@ -157,7 +175,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 product.stock -= quantity
                 product.save(update_fields=['stock'])
 
-                unit_price = Decimal(str(product.effective_price))
+                if promo:
+                    unit_price = Decimal(str(promo.discounted_price_for(product)))
+                else:
+                    unit_price = Decimal(str(product.effective_price))
                 product_name = product.name
                 product_image = _first_thumb(product.images)
             else:

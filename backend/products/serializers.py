@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Product
+from .models import Category, PromoCode, Product
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -47,3 +47,17 @@ class ProductSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class PromoCodeSerializer(serializers.ModelSerializer):
+    products = serializers.PrimaryKeyRelatedField(many=True, queryset=Product.objects.all())
+
+    class Meta:
+        model = PromoCode
+        fields = ['id', 'code', 'discount_type', 'discount_value', 'products', 'active', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate_products(self, value):
+        if not value:
+            raise serializers.ValidationError('Select at least one product this code applies to.')
+        return value

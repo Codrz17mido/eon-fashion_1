@@ -44,6 +44,10 @@ class Order(models.Model):
     # recoverable. Existing rows (pre-migration) keep an empty string.
     phone_alt = models.CharField(max_length=30, blank=True, default='')
     address = models.TextField()
+    # The promo code string as entered (normalized/uppercased), kept for
+    # the admin's record even though it isn't a FK — a PromoCode can be
+    # deleted later and the order should still show what was used.
+    promo_code = models.CharField(max_length=40, blank=True, default='')
     notes = models.TextField(blank=True, default='')
 
     currency = models.CharField(max_length=10, default='EGP')

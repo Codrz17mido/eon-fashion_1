@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Category, Product
+from .models import Category, PromoCode, Product
 
 
 @admin.register(Category)
@@ -37,3 +37,17 @@ class ProductAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description='Discount active now')
     def discount_active_badge(self, obj):
         return obj.is_discount_active
+
+
+@admin.register(PromoCode)
+class PromoCodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'discount_type', 'discount_value', 'active', 'product_count', 'created_at')
+    list_filter = ('active', 'discount_type')
+    search_fields = ('code',)
+    list_editable = ('active',)
+    filter_horizontal = ('products',)
+    readonly_fields = ('created_at',)
+
+    @admin.display(description='Products')
+    def product_count(self, obj):
+        return obj.products.count()

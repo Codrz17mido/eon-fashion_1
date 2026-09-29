@@ -124,3 +124,48 @@ class Product(models.Model):
         if self.discount_type == self.DISCOUNT_TYPE_FIXED:
             return round(max(float(self.price) - float(self.discount_value), 0), 2)
         return round(float(self.price) * (1 - float(self.discount_value) / 100), 2)
+
+
+class PromoCode(models.Model):
+    """A manually-entered coupon code, scoped to specific products (not
+    store-wide). Distinct from Product.discount_* above, which applies
+    automatically with no code needed — this is the "type in a code at
+    checkout" kind. Stays active indefinitely once created; there's no
+    usage-count or expiry field by design; the admin deactivates
+    (or deletes) it by hand when it should stop working."""
+
+    DISCOUNT_TYPE_PERCENTAGE = 'percentage'
+    DISCOUNT_TYPE_FIXED = 'fixed'
+    DISCOUNT_TYPE_CHOICES = [
+        (DISCOUNT_TYPE_PERCENTAGE, 'Percentage'),
+        (DISCOUNT_TYPE_FIXED, 'Fixed Amount'),
+    ]
+
+    code = models.CharField(max_length=40, unique=True, db_index=True)
+    discount_type = models.CharField(
+        max_length=10, choices=DISCOUNT_TYPE_CHOICES, default=DISCOUNT_TYPE_PERCENTAGE
+    )
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    products = models.ManyToManyField(Product, related_name='promo_codes')
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.code
+
+    def save(self, *args, **kwargs):
+        self.code = self.code.strip().upper()
+        super().save(*args, **kwargs)
+
+    def discounted_price_for(self, product):
+        """Price for `product` under this code, or its normal
+        effective_price if the code doesn't apply to it."""
+        price = float(product.price)
+        if not self.products.filter(pk=product.pk).exists():
+            return product.effective_price
+        if self.discount_type == self.DISCOUNT_TYPE_FIXED:
+            return round(max(price - float(self.discount_value), 0), 2)
+        return round(price * (1 - float(self.discount_value) / 100), 2)

@@ -7,8 +7,8 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
-from .models import Category, Product
-from .serializers import CategorySerializer, ProductSerializer
+from .models import Category, PromoCode, Product
+from .serializers import CategorySerializer, ProductSerializer, PromoCodeSerializer
 
 # Every uploaded file lives under MEDIA_ROOT/products/<product_id>/<variant>/.
 # Kept as a helper so the upload and delete actions agree on the exact same
@@ -72,6 +72,46 @@ class CategoryViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name', 'created_at']
+
+
+class PromoCodeViewSet(viewsets.ModelViewSet):
+    """
+    Admin-only CRUD for coupon codes, plus one public read action:
+
+    GET  /api/products/promo-codes/            -> list (admin)
+    POST /api/products/promo-codes/            -> create (admin)
+    ...standard ModelViewSet routes, all admin-only...
+    GET  /api/products/promo-codes/check/?code=XXX -> public lookup used
+         by the cart page. Deliberately returns only what the frontend
+         needs to preview a discount (type, value, which product ids it
+         applies to) — never the full list of codes, so this can't be
+         used to enumerate active coupons.
+    """
+
+    queryset = PromoCode.objects.all()
+    serializer_class = PromoCodeSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny], url_path='check')
+    def check(self, request):
+        code = (request.query_params.get('code') or '').strip().upper()
+        if not code:
+            # 'error' listed first: services/api.js's extractErrorMessage()
+            # reads the first key of a non-2xx JSON body as the display
+            # message, so 'valid' (a bool, not a string) coming first
+            # would make it fall through to a generic "Request failed: 400".
+            return Response({'error': 'No code provided.', 'valid': False}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            promo = PromoCode.objects.get(code=code, active=True)
+        except PromoCode.DoesNotExist:
+            return Response({'error': 'Invalid or inactive code.', 'valid': False}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'valid': True,
+            'code': promo.code,
+            'discount_type': promo.discount_type,
+            'discount_value': promo.discount_value,
+            'product_ids': list(promo.products.values_list('id', flat=True)),
+        })
 
 
 class ProductViewSet(viewsets.ModelViewSet):
