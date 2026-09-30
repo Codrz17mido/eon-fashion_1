@@ -44,6 +44,16 @@ class Migration(migrations.Migration):
                 to='products.product',
             ),
         ),
+        # Drop the old unique constraint on 'code' BEFORE the data
+        # migration below — split_by_product() deliberately creates
+        # multiple rows sharing the same code (that's the whole point of
+        # this migration), which the old unique=True would reject at the
+        # database level the moment a second row is inserted.
+        migrations.AlterField(
+            model_name='promocode',
+            name='code',
+            field=models.CharField(db_index=True, max_length=40),
+        ),
         migrations.RunPython(split_by_product, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='promocode',
@@ -57,10 +67,5 @@ class Migration(migrations.Migration):
                 related_name='promo_code',
                 to='products.product',
             ),
-        ),
-        migrations.AlterField(
-            model_name='promocode',
-            name='code',
-            field=models.CharField(db_index=True, max_length=40),
         ),
     ]
