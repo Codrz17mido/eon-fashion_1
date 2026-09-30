@@ -4,10 +4,10 @@ import { uploadProductImageSets, deleteProductImageSet, validateImageFile } from
 import { getThumbUrl } from '../lib/images';
 import { subscribeCategories } from '../lib/db/categories';
 import {
-  findPromoCodeByCode,
   findPromoCodeForProduct,
   createPromoCode,
   updatePromoCode,
+  deletePromoCode,
 } from '../services/api';
 
 const STANDARD_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -198,28 +198,28 @@ export default function ProductForm({ product, onClose }) {
           discount_value: Number(promoDiscountValue) || 0,
         };
         if (promoId) {
-          // Already known to be on this code (from findPromoCodeForProduct)
-          // — just update its discount, no need to touch `products`.
+          // This product already has its own promo code row (from
+          // findPromoCodeForProduct) — update it in place. Its discount
+          // is independent of any other product, even one using the
+          // exact same code text, so this can never affect another
+          // product's discount.
           await updatePromoCode(promoId, codeData);
         } else {
-          const existing = await findPromoCodeByCode(trimmedCode);
-          if (existing) {
-            // Code already exists for other product(s) — add this one
-            // rather than erroring on the unique `code` constraint.
-            const productIds = existing.products.includes(Number(id))
-              ? existing.products
-              : [...existing.products, Number(id)];
-            await updatePromoCode(existing.id, { ...codeData, products: productIds });
-            setPromoId(existing.id);
-          } else {
-            const created = await createPromoCode({ ...codeData, products: [Number(id)] });
-            setPromoId(created.id);
-          }
+          const created = await createPromoCode({ ...codeData, product: Number(id) });
+          setPromoId(created.id);
         }
       } catch (err) {
         // Non-fatal — the product itself is already saved at this point;
         // surface the promo-specific problem without discarding that.
         setError(err?.message || 'Product saved, but the promo code could not be saved.');
+      }
+    } else if (promoId) {
+      // Code field cleared — remove this product's promo code entirely.
+      try {
+        await deletePromoCode(promoId);
+        setPromoId(null);
+      } catch (err) {
+        setError(err?.message || 'Product saved, but the existing promo code could not be removed.');
       }
     }
 

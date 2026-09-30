@@ -79,15 +79,20 @@ export default function Cart() {
 
   const shippingCost = shippingFeeFor(customer.governorate);
 
-  const promoProductIds = promo?.valid ? new Set(promo.product_ids.map(String)) : null;
+  // The same code text can sit on several products, each with its own
+  // discount (see backend PromoCode) — `promo.products` is one entry
+  // per product it applies to, so this maps by product id rather than
+  // assuming one shared discount_type/discount_value for the code.
+  const promoRuleByProductId = promo?.valid
+    ? new Map(promo.products.map((p) => [String(p.product_id), p]))
+    : null;
   const discountedSubtotal = items.reduce((sum, item) => {
-    if (!promoProductIds || !promoProductIds.has(String(item.id))) {
-      return sum + item.price * item.quantity;
-    }
+    const rule = promoRuleByProductId?.get(String(item.id));
+    if (!rule) return sum + item.price * item.quantity;
     const price =
-      promo.discount_type === 'fixed'
-        ? Math.max(item.price - Number(promo.discount_value), 0)
-        : item.price * (1 - Number(promo.discount_value) / 100);
+      rule.discount_type === 'fixed'
+        ? Math.max(item.price - Number(rule.discount_value), 0)
+        : item.price * (1 - Number(rule.discount_value) / 100);
     return sum + price * item.quantity;
   }, 0);
   const promoSavings = subtotal - discountedSubtotal;
