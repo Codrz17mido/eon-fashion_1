@@ -135,18 +135,17 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def validate_promo_code(self, value):
-        """Resolves the code to an active PromoCode and stashes it on
-        self._promo for create() to use — price is never trusted from
-        the client (see the class docstring), so the discount has to be
-        re-applied here from the server's own PromoCode/Product records,
-        the same way effective_price already is."""
+        """Just confirms *some* active PromoCode uses this code text —
+        the same code can exist on several products, each its own row
+        with its own discount (see products.models.PromoCode), so there
+        is no single object to resolve to here. create() below looks up
+        the matching row per line item instead. Price is never trusted
+        from the client either way; this only re-checks the code isn't
+        garbage before the round trip continues."""
         code = value.strip().upper()
-        self._promo = None
         if not code:
             return ''
-        try:
-            self._promo = PromoCode.objects.get(code=code, active=True)
-        except PromoCode.DoesNotExist:
+        if not PromoCode.objects.filter(code=code, active=True).exists():
             raise serializers.ValidationError('Invalid or inactive promo code.')
         return code
 
@@ -154,7 +153,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         shipping_cost = validated_data.pop('shipping_cost', Decimal('0'))
-        promo = getattr(self, '_promo', None)
+        promo_code = validated_data.get('promo_code') or ''
 
         order = Order.objects.create(**validated_data, shipping_cost=shipping_cost)
 
@@ -175,10 +174,18 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 product.stock -= quantity
                 product.save(update_fields=['stock'])
 
-                if promo:
-                    unit_price = Decimal(str(promo.discounted_price_for(product)))
-                else:
-                    unit_price = Decimal(str(product.effective_price))
+                unit_price = Decimal(str(product.effective_price))
+                if promo_code:
+                    # Look up the row for *this specific product* — the
+                    # same code text can sit on other products with a
+                    # different discount each, so there's no single
+                    # "the promo" for the whole order (see
+                    # products.models.PromoCode).
+                    promo = PromoCode.objects.filter(
+                        code=promo_code, product=product, active=True
+                    ).first()
+                    if promo:
+                        unit_price = Decimal(str(promo.discounted_price()))
                 product_name = product.name
                 product_image = _first_thumb(product.images)
             else:

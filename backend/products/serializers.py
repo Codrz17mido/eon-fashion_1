@@ -50,14 +50,13 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class PromoCodeSerializer(serializers.ModelSerializer):
-    products = serializers.PrimaryKeyRelatedField(many=True, queryset=Product.objects.all())
+    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all())
 
     class Meta:
         model = PromoCode
-        fields = ['id', 'code', 'discount_type', 'discount_value', 'products', 'active', 'created_at']
+        fields = ['id', 'code', 'discount_type', 'discount_value', 'product', 'active', 'created_at']
         read_only_fields = ['id', 'created_at']
-
-    def validate_products(self, value):
-        if not value:
-            raise serializers.ValidationError('Select at least one product this code applies to.')
-        return value
+        # No UniqueValidator on 'code' here — it's deliberately not unique
+        # across products (see the model docstring). 'product' is already
+        # enforced unique by the OneToOneField itself, so a second
+        # PromoCode for the same product is rejected automatically.

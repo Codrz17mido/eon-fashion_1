@@ -92,39 +92,28 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
     serializer_class = PromoCodeSerializer
     permission_classes = [permissions.IsAdminUser]
 
-    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAdminUser], url_path='find')
-    def find(self, request):
-        """Admin-only exact lookup by code (active or not) — used by the
-        Add/Edit Product form so typing an existing code updates that
-        code (adding this product to it) instead of erroring on the
-        unique constraint by trying to create a duplicate."""
-        code = (request.query_params.get('code') or '').strip().upper()
-        if not code:
-            return Response({'error': 'No code provided.'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            promo = PromoCode.objects.get(code=code)
-        except PromoCode.DoesNotExist:
-            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(self.get_serializer(promo).data)
-
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAdminUser], url_path='for-product')
     def for_product(self, request):
         """Admin-only: the promo code currently attached to a given
         product (if any) — lets the Add/Edit Product form pre-fill the
         promo code fields when editing a product that already has one.
-        A product could technically be on more than one code; this
-        returns the most recently created, since the product form only
-        edits one at a time."""
+        A product has at most one (OneToOneField), so there's only ever
+        one to return."""
         product_id = request.query_params.get('product_id')
         if not product_id:
             return Response({'error': 'No product_id provided.'}, status=status.HTTP_400_BAD_REQUEST)
-        promo = PromoCode.objects.filter(products__id=product_id).order_by('-created_at').first()
+        promo = PromoCode.objects.filter(product_id=product_id).first()
         if not promo:
             return Response(None)
         return Response(self.get_serializer(promo).data)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny], url_path='check')
     def check(self, request):
+        """Public — used by the cart page. The same code text can exist
+        on several products, each with its own discount (that's the
+        whole point: editing one product's code never touches another's)
+        — so this returns every active row for the code, one entry per
+        product, rather than a single discount_type/discount_value."""
         code = (request.query_params.get('code') or '').strip().upper()
         if not code:
             # 'error' listed first: services/api.js's extractErrorMessage()
@@ -132,16 +121,20 @@ class PromoCodeViewSet(viewsets.ModelViewSet):
             # message, so 'valid' (a bool, not a string) coming first
             # would make it fall through to a generic "Request failed: 400".
             return Response({'error': 'No code provided.', 'valid': False}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            promo = PromoCode.objects.get(code=code, active=True)
-        except PromoCode.DoesNotExist:
+        promos = PromoCode.objects.filter(code=code, active=True)
+        if not promos.exists():
             return Response({'error': 'Invalid or inactive code.', 'valid': False}, status=status.HTTP_404_NOT_FOUND)
         return Response({
             'valid': True,
-            'code': promo.code,
-            'discount_type': promo.discount_type,
-            'discount_value': promo.discount_value,
-            'product_ids': list(promo.products.values_list('id', flat=True)),
+            'code': code,
+            'products': [
+                {
+                    'product_id': p.product_id,
+                    'discount_type': p.discount_type,
+                    'discount_value': p.discount_value,
+                }
+                for p in promos
+            ],
         })
 
 

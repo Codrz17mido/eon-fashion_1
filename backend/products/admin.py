@@ -41,13 +41,9 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(PromoCode)
 class PromoCodeAdmin(admin.ModelAdmin):
-    list_display = ('code', 'discount_type', 'discount_value', 'active', 'product_count', 'created_at')
+    list_display = ('code', 'product', 'discount_type', 'discount_value', 'active', 'created_at')
     list_filter = ('active', 'discount_type')
-    search_fields = ('code',)
+    search_fields = ('code', 'product__name')
     list_editable = ('active',)
-    filter_horizontal = ('products',)
+    autocomplete_fields = ('product',)
     readonly_fields = ('created_at',)
-
-    @admin.display(description='Products')
-    def product_count(self, obj):
-        return obj.products.count()
